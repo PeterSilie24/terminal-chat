@@ -33,7 +33,7 @@ Terminal::Terminal(const std::string& label) : label(label + ": "), run(false)
 
 	signal(SIGTERM, this->handlerSignal);
 
-	#ifdef WIN32
+	#if defined(WINDOWS)
 
 	HANDLE hStdin = GetStdHandle(STD_INPUT_HANDLE);
 
@@ -41,7 +41,7 @@ Terminal::Terminal(const std::string& label) : label(label + ": "), run(false)
 
 	SetConsoleMode(hStdin, (this->dwMode) & (~ENABLE_ECHO_INPUT) & (~ENABLE_LINE_INPUT));
 
-	#else
+	#elif defined(POSIX)
 
 	termios term;
 
@@ -61,13 +61,13 @@ Terminal::~Terminal()
 {
 	this->disableInput();
 
-	#ifdef WIN32
+	#if defined(WINDOWS)
 
 	HANDLE hStdin = GetStdHandle(STD_INPUT_HANDLE);
 
 	SetConsoleMode(hStdin, (this->dwMode));
 
-	#else
+	#elif defined(POSIX)
 
 	tcsetattr(STDIN_FILENO, TCSANOW, &(this->oldTerm));
 
@@ -180,7 +180,7 @@ void Terminal::printLine(const std::string& line)
 
 Coord Terminal::getCursorPosition() const
 {
-	#ifdef WIN32
+	#if defined(WINDOWS)
 
 	HANDLE hStdout = GetStdHandle(STD_OUTPUT_HANDLE);
 
@@ -190,7 +190,7 @@ Coord Terminal::getCursorPosition() const
 
 	return Coord(static_cast<int>(cbsi.dwCursorPosition.X), static_cast<int>(cbsi.dwCursorPosition.Y));
 
-	#else
+	#elif defined(POSIX)
 
 	Coord cursorPosition;
 
@@ -206,7 +206,7 @@ Coord Terminal::getCursorPosition() const
 
 void Terminal::setCursorPosition(const Coord& cursorPosition)
 {
-	#ifdef WIN32
+	#if defined(WINDOWS)
 	
 	HANDLE hStdout = GetStdHandle(STD_OUTPUT_HANDLE);
 
@@ -216,7 +216,7 @@ void Terminal::setCursorPosition(const Coord& cursorPosition)
 
 	SetConsoleCursorPosition(hStdout, dwCursorPosition);
 
-	#else
+	#elif defined(POSIX)
 
 	Coord currentCursorPosition = this->getCursorPosition();
 
@@ -243,7 +243,7 @@ void Terminal::setCursorPosition(const Coord& cursorPosition)
 
 Coord Terminal::getMaximumSize() const
 {
-	#ifdef WIN32
+	#if defined(WINDOWS)
 
 	HANDLE hStdout = GetStdHandle(STD_OUTPUT_HANDLE);
 
@@ -253,7 +253,7 @@ Coord Terminal::getMaximumSize() const
 
 	return Coord(static_cast<int>(cbsi.dwMaximumWindowSize.X), static_cast<int>(cbsi.dwMaximumWindowSize.Y));
 
-	#else
+	#elif defined(POSIX)
 	
 	struct winsize size;
 
@@ -276,7 +276,7 @@ void Terminal::erase(std::size_t n)
 	int maxX = static_cast<int>(maximumSize.x);
 	int maxY = static_cast<int>(maximumSize.y);
 
-	int toRemove = n;
+	int toRemove = static_cast<int>(n);
 
 	if (toRemove > 0)
 	{
@@ -307,13 +307,13 @@ void Terminal::erase(std::size_t n)
 
 	this->setCursorPosition(cursorPosition);
 
-	#ifdef WIN32
+	#if defined(WINDOWS)
 
 	std::cout << std::string(n, ' ');
 
 	this->setCursorPosition(cursorPosition);
 
-	#else
+	#elif defined(POSIX)
 
 	std::cout << (char)0x1B << "[s" << std::flush;
 
@@ -328,14 +328,14 @@ char Terminal::getchar()
 {
 	char c = '\0';
 
-	#ifdef WIN32
+	#if defined(WINDOWS)
 
 	if (_kbhit())
 	{
 		c = static_cast<char>(_getch());
 	}
 
-	#else
+	#elif defined(POSIX)
 
 	struct timeval tv;
 	fd_set rdfs;
@@ -365,9 +365,9 @@ char Terminal::getchar()
 
 void Terminal::checkForNewline()
 {
-	#ifdef WIN32
+	#if defined(WINDOWS)
 
-	#else
+	#elif defined(POSIX)
 
 	if (this->getCursorPosition().x == 0)
 	{

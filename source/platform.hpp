@@ -17,53 +17,16 @@
 
 #pragma once
 
-#include "platform.hpp"
+#if defined(_WIN32) || defined(_WIN64)
 
-#include <stdexcept>
-#include <string>
+#define WINDOWS
 
-#if defined(WINDOWS)
+#elif defined(__unix__) || defined(__APPLE__) || defined(__MACH__)
 
-#include <WinSock2.h>
-#include <Ws2tcpip.h>
-#include <Windows.h>
+#define POSIX
 
-typedef SOCKET Socket;
+#else
 
-extern int close(SOCKET s);
-
-#define SHUT_WR SD_SEND
-
-#elif defined(POSIX)
-
-#include <unistd.h>
-
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <sys/stat.h>
-
-#include <netinet/in.h>
-#include <netdb.h>
-#include <arpa/inet.h>
-
-typedef int Socket;
-
-#define INVALID_SOCKET -1
-#define SOCKET_ERROR -1
+#error "Platform is not supported!"
 
 #endif
-
-class Network
-{
-public:
-	static void startup();
-
-	static void cleanup();
-
-	static const unsigned short DefaultPort;
-
-	static const int MaxConnections;
-
-private:
-	static int counter;
-};

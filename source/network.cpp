@@ -17,7 +17,7 @@
 
 #include "network.hpp"
 
-#ifdef WIN32
+#if defined(WINDOWS)
 
 int close(SOCKET s)
 {
@@ -30,7 +30,7 @@ void Network::startup()
 {
 	if (counter == 0)
 	{
-		#ifdef WIN32
+		#if defined(WINDOWS)
 
 		WSADATA wsaData;
 
@@ -60,7 +60,7 @@ void Network::cleanup()
 
 	if (counter == 0)
 	{
-		#ifdef WIN32
+		#if defined(WINDOWS)
 
 		WSACleanup();
 

@@ -157,7 +157,7 @@ bool TcpSocket::isAvailable() const
 		FD_ZERO(&readfds);
 		FD_SET(this->socket, &readfds);
 
-		if (select(this->socket + 1, &readfds, nullptr, nullptr, &tv) > 0)
+		if (select(static_cast<int>(this->socket) + 1, &readfds, nullptr, nullptr, &tv) > 0)
 		{
 			if (FD_ISSET(this->socket, &readfds) > 0)
 			{
@@ -223,7 +223,7 @@ void TcpSocket::writeLine(const std::string& line)
 	{
 		std::string str = line + "\n";
 
-		if (send(this->socket, str.c_str(), str.length(), 0) <= 0)
+		if (send(this->socket, str.c_str(), static_cast<int>(str.length()), 0) <= 0)
 		{
 			this->close(true);
 		}
@@ -256,7 +256,7 @@ void TcpSocket::process()
 
 			bytes.fill('\0');
 
-			if (recv(this->socket, bytes.data(), bytes.size() - 1, 0) <= 0)
+			if (recv(this->socket, bytes.data(), static_cast<int>(bytes.size()) - 1, 0) <= 0)
 			{
 				this->close(true);
 

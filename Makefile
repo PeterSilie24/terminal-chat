@@ -1,4 +1,4 @@
-CFLAGS = -std=c++11
+CXXFLAGS = -std=c++11
 LDFLAGS = -lpthread
 
 HPP_FILES = source/arguments.hpp source/client.hpp source/network.hpp source/server.hpp source/tcp-socket.hpp source/terminal.hpp
@@ -6,4 +6,4 @@ CPP_FILES = source/arguments.cpp source/client.cpp source/network.cpp source/ser
 
 terminal-chat: $(HPP_FILES) $(CPP_FILES)
 	mkdir -p bin
-	g++ $(CFLAGS) -o bin/terminal-chat $(CPP_FILES) $(LDFLAGS)
+	g++ $(CXXFLAGS) -o bin/terminal-chat $(CPP_FILES) $(LDFLAGS)

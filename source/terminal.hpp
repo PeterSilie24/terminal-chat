@@ -17,23 +17,30 @@
 
 #pragma once
 
+#include "platform.hpp"
+
 #include <queue>
 #include <iostream>
 #include <thread>
 #include <mutex>
-#include <algorithm>
 #include <csignal>
 #include <string>
+#include <algorithm>
 
-#ifdef WIN32
+#if defined(WINDOWS)
 
 #include <Windows.h>
 #include <conio.h>
 
+#ifdef min
 #undef min
-#undef max
+#endif
 
-#else
+#ifdef max
+#undef max
+#endif
+
+#elif defined(POSIX)
 
 #include <unistd.h>
 #include <termios.h>
@@ -105,11 +112,11 @@ private:
 
 	static bool exit;
 
-	#ifdef WIN32
+	#if defined(WINDOWS)
 	
 	DWORD dwMode;
 
-	#else
+	#elif defined(POSIX)
 
 	termios oldTerm;
 
