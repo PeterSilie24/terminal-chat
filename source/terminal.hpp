@@ -23,6 +23,7 @@
 #include <iostream>
 #include <thread>
 #include <mutex>
+#include <atomic>
 #include <csignal>
 #include <string>
 #include <algorithm>
@@ -106,11 +107,12 @@ private:
 	std::queue<std::string> lines;
 
 	std::thread thread;
-	mutable std::mutex mutex;
+	mutable std::recursive_mutex mutex;
 
-	bool run;
+	std::atomic_bool run;
+	bool process;
 
-	static bool exit;
+	static std::atomic_bool exit;
 
 	#if defined(WINDOWS)
 	

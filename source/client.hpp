@@ -19,6 +19,7 @@
 
 #include <thread>
 #include <mutex>
+#include <atomic>
 #include <vector>
 
 #include "tcp-socket.hpp"
@@ -43,12 +44,12 @@ private:
 
 	void processNetwork();
 
-	std::shared_ptr<TcpSocket> tcpSocket;
+	TcpSocket tcpSocket;
 
 	std::queue<std::string> messages;
 
 	std::thread thread;
-	mutable std::mutex mutex;
+	mutable std::recursive_mutex mutex;
 
-	bool run;
+	std::atomic_bool run;
 };

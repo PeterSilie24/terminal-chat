@@ -25,10 +25,14 @@ class Arguments
 public:
 	static void setArgs(int argc, char* argv[]);
 
-	static bool hasArg(const std::string& arg);
+	static bool hasFlag(const std::string& flag);
 
-	static std::string getArg(const std::string& arg);
+	static bool hasArgument(const std::string& argument);
+
+	static std::string getArgument(const std::string& argument);
 
 private:
-	static std::vector<std::string> args;
+	static std::vector<std::pair<std::string, std::string>> arguments;
+
+	static std::vector<std::string> flags;
 };

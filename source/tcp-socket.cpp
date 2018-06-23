@@ -20,15 +20,6 @@
 TcpSocket::TcpSocket() : socket(INVALID_SOCKET), bound(false), connected(false), pinged(false), lastTime(std::chrono::high_resolution_clock::now())
 {
 	Network::startup();
-
-	this->socket = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-
-	if (this->socket == INVALID_SOCKET)
-	{
-		this->cleanup();
-
-		throw std::runtime_error("Failed to initialize the TCP socket");
-	}
 }
 
 TcpSocket::TcpSocket(Socket socket) : socket(socket), bound(false), connected(false), pinged(false)
@@ -38,22 +29,46 @@ TcpSocket::TcpSocket(Socket socket) : socket(socket), bound(false), connected(fa
 
 TcpSocket::~TcpSocket()
 {
-	this->cleanup();
+	this->close();
+
+	Network::cleanup();
 }
 
 void TcpSocket::bind(unsigned short port)
 {
+	this->setup(AF_INET6);
+
 	if (this->socket != INVALID_SOCKET)
 	{
-		sockaddr_in addr;
+		int flag = 1;
 
-		addr.sin_family = AF_INET;
-		addr.sin_addr.s_addr = INADDR_ANY;
-		addr.sin_port = htons(port);
+		if (setsockopt(this->socket, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<char*>(&flag), sizeof(flag)) == SOCKET_ERROR)
+		{
+			this->close();
+
+			throw std::runtime_error("Failed to set reuse address option for the TCP socket");
+		}
+
+		flag = 0;
+
+		if (setsockopt(this->socket, IPPROTO_IPV6, IPV6_V6ONLY, reinterpret_cast<char*>(&flag), sizeof(flag)) == SOCKET_ERROR)
+		{
+			this->close();
+
+			throw std::runtime_error("Failed to disable IPv6 v6 only");
+		}
+
+		sockaddr_in6 addr;
+
+		std::memset(&addr, 0, sizeof(addr));
+
+		addr.sin6_family = AF_INET6;
+		addr.sin6_addr = in6addr_any;
+		addr.sin6_port = htons(port);
 
 		if (::bind(this->socket, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) == SOCKET_ERROR)
 		{
-			this->close(true);
+			this->close();
 
 			throw std::runtime_error("Failed to bind the TCP socket on port " + std::to_string(port));
 		}
@@ -69,36 +84,94 @@ bool TcpSocket::isBound() const
 
 void TcpSocket::listen(int maxConnections)
 {
+	if (!this->bound)
+	{
+		throw std::runtime_error("The TCP socket is not bound");
+	}
+
 	if (this->socket != INVALID_SOCKET)
 	{
 		if (::listen(this->socket, maxConnections) == SOCKET_ERROR)
 		{
-			this->close(true);
+			this->close();
 
 			throw std::runtime_error("Failed to place the TCP socket in listening state");
 		}
 	}
 }
 
-void TcpSocket::connect(const std::string& ipAddress, unsigned short port)
+void TcpSocket::connect(const std::string& address, unsigned short port)
 {
-	if (this->socket != INVALID_SOCKET)
+	sockaddr* addr = nullptr;
+	socklen_t addrLen = 0;
+
+	int family = 0;
+
+	std::string ipAddress = Network::resolveHostIPv6(address);
+
+	if (ipAddress != "")
 	{
-		sockaddr_in addr;
+		sockaddr_in6 addr6;
 
-		addr.sin_family = AF_INET;
-		addr.sin_port = htons(port);
+		std::memset(&addr6, 0, sizeof(addr6));
 
-		if (inet_pton(AF_INET, ipAddress.c_str(), &(addr.sin_addr)) != 1)
+		addr6.sin6_family = AF_INET6;
+		addr6.sin6_port = htons(port);
+
+		if (inet_pton(AF_INET6, ipAddress.c_str(), &(addr6.sin6_addr)))
+		{
+			addr = reinterpret_cast<sockaddr*>(&addr6);
+
+			addrLen = sizeof(addr6);
+
+			family = AF_INET6;
+		}
+		else
 		{
 			throw std::runtime_error("Not a valid IP address");
 		}
+	}
+	else
+	{
+		ipAddress = Network::resolveHostIPv4(address);
 
-		if (::connect(this->socket, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) == SOCKET_ERROR)
+		if (ipAddress != "")
 		{
-			this->close(true);
+			sockaddr_in addr4;
 
-			throw std::runtime_error("Failed to connect the TCP socket to " + ipAddress + ":" + std::to_string(port));
+			std::memset(&addr4, 0, sizeof(addr4));
+
+			addr4.sin_family = AF_INET;
+			addr4.sin_port = htons(port);
+
+			if (inet_pton(AF_INET, ipAddress.c_str(), &(addr4.sin_addr)))
+			{
+				addr = reinterpret_cast<sockaddr*>(&addr4);
+
+				addrLen = sizeof(addr4);
+
+				family = AF_INET;
+			}
+			else
+			{
+				throw std::runtime_error("Not a valid IP address");
+			}
+		}
+		else
+		{
+			throw std::runtime_error("Failed to resolve " + address);
+		}
+	}
+
+	this->setup(family);
+
+	if (this->socket != INVALID_SOCKET)
+	{
+		if (::connect(this->socket, addr, addrLen) == SOCKET_ERROR)
+		{
+			this->close();
+
+			throw std::runtime_error("Failed to connect the TCP socket to [" + address + "]:" + std::to_string(port));
 		}
 
 		this->connected = true;
@@ -107,19 +180,9 @@ void TcpSocket::connect(const std::string& ipAddress, unsigned short port)
 
 void TcpSocket::connect(const std::string& address)
 {
-	std::string ipAddress = address;
-	unsigned short port = Network::DefaultPort;
+	std::pair<std::string, unsigned short> splittedAddress = Network::splitAddress(address);
 
-	std::size_t position = address.find(":");
-
-	if (position != std::string::npos)
-	{
-		ipAddress = std::string(address.begin(), address.begin() + position);
-
-		port = static_cast<unsigned short>(atoi(std::string(address.begin() + position + 1, address.end()).c_str()));
-	}
-
-	this->connect(ipAddress, port);
+	this->connect(splittedAddress.first, splittedAddress.second);
 }
 
 bool TcpSocket::isConnected() const
@@ -175,10 +238,7 @@ std::shared_ptr<TcpSocket> TcpSocket::accept()
 
 	if (this->socket != INVALID_SOCKET)
 	{
-		sockaddr_in addr;
-		socklen_t addrSize = sizeof(addr);
-
-		Socket socket = ::accept(this->socket, reinterpret_cast<sockaddr*>(&addr), &addrSize);
+		Socket socket = ::accept(this->socket, nullptr, nullptr);
 
 		if (socket != INVALID_SOCKET)
 		{
@@ -191,7 +251,7 @@ std::shared_ptr<TcpSocket> TcpSocket::accept()
 		}
 		else
 		{
-			this->close(true);
+			this->close();
 		}
 	}
 
@@ -225,12 +285,12 @@ void TcpSocket::writeLine(const std::string& line)
 
 		if (send(this->socket, str.c_str(), static_cast<int>(str.length()), 0) <= 0)
 		{
-			this->close(true);
+			this->close();
 		}
 	}
 }
 
-void TcpSocket::close(bool force)
+void TcpSocket::close()
 {
 	if (this->socket != INVALID_SOCKET)
 	{
@@ -258,7 +318,7 @@ void TcpSocket::process()
 
 			if (recv(this->socket, bytes.data(), static_cast<int>(bytes.size()) - 1, 0) <= 0)
 			{
-				this->close(true);
+				this->close();
 
 				break;
 			}
@@ -295,6 +355,18 @@ void TcpSocket::process()
 				this->pinged = true;
 			}
 		}
+	}
+}
+
+void TcpSocket::setup(int family)
+{
+	this->close();
+
+	this->socket = ::socket(family, SOCK_STREAM, IPPROTO_TCP);
+
+	if (this->socket == INVALID_SOCKET)
+	{
+		throw std::runtime_error("Failed to initialize the TCP socket");
 	}
 }
 
@@ -344,11 +416,4 @@ void TcpSocket::processLine(const std::string& line)
 	{
 		this->lines.push(line);
 	}
-}
-
-void TcpSocket::cleanup()
-{
-	this->close();
-
-	Network::cleanup();
 }

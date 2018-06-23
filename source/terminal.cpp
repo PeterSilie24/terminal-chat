@@ -27,7 +27,7 @@ Coord::Coord(int x, int y) : x(x), y(y)
 
 }
 
-Terminal::Terminal(const std::string& label) : label(label + ": "), run(false)
+Terminal::Terminal(const std::string& label) : label(label + ": "), process(false)
 {
 	signal(SIGINT, this->handlerSignal);
 
@@ -55,11 +55,22 @@ Terminal::Terminal(const std::string& label) : label(label + ": "), run(false)
 	tcsetattr(STDIN_FILENO, TCSANOW, &term);
 
 	#endif
+
+	this->run = true;
+
+	this->thread = std::thread([this] { this->processInput(); });
 }
 
 Terminal::~Terminal()
 {
 	this->disableInput();
+
+	this->run = false;
+
+	if (this->thread.joinable())
+	{
+		this->thread.join();
+	}
 
 	#if defined(WINDOWS)
 
@@ -76,32 +87,27 @@ Terminal::~Terminal()
 
 void Terminal::enableInput(bool enable)
 {
-	if (enable && !this->run)
+	std::lock_guard<std::recursive_mutex> lockGuard(this->mutex);
+
+	if (enable)
 	{
-		std::lock_guard<std::mutex> lockGuard(this->mutex);
+		if (!this->process)
+		{
+			this->process = true;
 
-		this->run = true;
-
-		std::cout << this->label << std::flush;
-
-		this->thread = std::thread([this] { this->processInput(); });
+			std::cout << this->label << std::flush;
+		}
 	}
-	else if (this->run)
+	else
 	{
+		if (this->process)
 		{
-			std::lock_guard<std::mutex> lockGuard(this->mutex);
+			this->process = false;
 
-			this->run = false;
+			this->erase(this->label.length() + this->input.length());
+
+			this->input.clear();
 		}
-
-		if (this->thread.joinable())
-		{
-			this->thread.join();
-		}
-
-		this->erase(this->label.length() + this->input.length());
-
-		this->input.clear();
 	}
 }
 
@@ -112,14 +118,14 @@ void Terminal::disableInput()
 
 bool Terminal::hasLine() const
 {
-	std::lock_guard<std::mutex> lockGuard(this->mutex);
+	std::lock_guard<std::recursive_mutex> lockGuard(this->mutex);
 
 	return this->lines.size() > 0;
 }
 
 std::string Terminal::getLine()
 {
-	std::lock_guard<std::mutex> lockGuard(this->mutex);
+	std::lock_guard<std::recursive_mutex> lockGuard(this->mutex);
 
 	std::string str;
 
@@ -135,16 +141,16 @@ std::string Terminal::getLine()
 
 void Terminal::setLabel(const std::string& label)
 {
-	std::lock_guard<std::mutex> lockGuard(this->mutex);
+	std::lock_guard<std::recursive_mutex> lockGuard(this->mutex);
 
-	if (this->run)
+	if (this->process)
 	{
 		this->erase(this->label.length() + this->input.length());
 	}
 
 	this->label = label + ": ";
 
-	if (this->run)
+	if (this->process)
 	{
 		std::cout << this->label << this->input << std::flush;
 
@@ -154,23 +160,21 @@ void Terminal::setLabel(const std::string& label)
 
 bool Terminal::shouldExit() const
 {
-	std::lock_guard<std::mutex> lockGuard(this->mutex);
-
 	return this->exit;
 }
 
 void Terminal::printLine(const std::string& line)
 {
-	std::lock_guard<std::mutex> lockGuard(this->mutex);
+	std::lock_guard<std::recursive_mutex> lockGuard(this->mutex);
 
-	if (this->run)
+	if (this->process)
 	{
 		this->erase(this->label.length() + this->input.length());
 	}
 
 	std::cout << line << std::endl;
 
-	if (this->run)
+	if (this->process)
 	{
 		std::cout << this->label << this->input << std::flush;
 
@@ -379,64 +383,63 @@ void Terminal::checkForNewline()
 
 void Terminal::processInput()
 {
-	while (true)
+	while (this->run)
 	{
 		{
-			std::lock_guard<std::mutex> lockGuard(this->mutex);
+			std::lock_guard<std::recursive_mutex> lockGuard(this->mutex);
 
-			if (!this->run)
-			{
-				break;
-			}
+			char c = '\0';
 
-			char c = this->getchar();
-
-			switch (c)
+			while ((c = this->getchar()) != '\0')
 			{
-			case '\0':
-				break;
-			case '\b':
-			case 0x7F:
-			{
-				if (this->input.length() > 0)
+				if (this->process)
 				{
-					this->erase(1);
+					switch (c)
+					{
+					case '\b':
+					case 0x7F:
+					{
+						if (this->input.length() > 0)
+						{
+							this->erase(1);
 
-					this->input.resize(input.length() - 1);
+							this->input.resize(input.length() - 1);
+						}
+
+						break;
+					}
+					case '\n':
+					case '\r':
+					{
+						if (this->input.length() > 0)
+						{
+							this->erase(this->input.length());
+
+							this->lines.push(input);
+
+							this->input.clear();
+						}
+
+						break;
+					}
+					case 0x1B:
+					{
+						this->exit = true;
+
+						break;
+					}
+					default:
+					{
+						this->input.resize(this->input.length() + 1, c);
+
+						std::cout << c << std::flush;
+
+						this->checkForNewline();
+
+						break;
+					}
+					}
 				}
-
-				break;
-			}
-			case '\n':
-			case '\r':
-			{
-				if (this->input.length() > 0)
-				{
-					this->erase(this->input.length());
-
-					this->lines.push(input);
-
-					this->input.clear();
-				}
-
-				break;
-			}
-			case 0x1B:
-			{
-				this->exit = true;
-
-				break;
-			}
-			default:
-			{
-				this->input.resize(this->input.length() + 1, c);
-
-				std::cout << c << std::flush;
-				
-				this->checkForNewline();
-
-				break;
-			}
 			}
 		}
 
@@ -449,4 +452,4 @@ void Terminal::handlerSignal(int signal)
 	exit = true;
 }
 
-bool Terminal::exit = false;
+std::atomic_bool Terminal::exit;

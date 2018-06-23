@@ -113,27 +113,20 @@ void User::processMessage(const std::string& line)
 	}
 }
 
-Server::Server(unsigned short port) : run(true)
+Server::Server(unsigned short port)
 {
-	this->tcpSocket = std::shared_ptr<TcpSocket>(new TcpSocket());
+	this->tcpSocket.bind(port);
 
-	if (this->tcpSocket)
-	{
-		this->tcpSocket->bind(port);
+	this->tcpSocket.listen();
 
-		this->tcpSocket->listen();
-	}
+	this->run = true;
 
 	this->thread = std::thread([this]() { this->processNetwork(); });
 }
 
 Server::~Server()
 {
-	{
-		std::lock_guard<std::mutex> lockGuard(this->mutex);
-
-		this->run = false;
-	}
+	this->run = false;
 
 	if (this->thread.joinable())
 	{
@@ -143,17 +136,18 @@ Server::~Server()
 
 void Server::acceptUser()
 {
-	if (this->tcpSocket)
+	std::lock_guard<std::recursive_mutex> lockGuard(this->mutex);
+
+	while (this->tcpSocket.isAvailable())
 	{
-		while (this->tcpSocket->isAvailable())
-		{
-			this->users.push_back(std::shared_ptr<User>(new User(this->tcpSocket->accept())));
-		}
+		this->users.push_back(std::shared_ptr<User>(new User(this->tcpSocket.accept())));
 	}
 }
 
 void Server::writeMessage(const std::string& message)
 {
+	std::lock_guard<std::recursive_mutex> lockGuard(this->mutex);
+
 	for (auto& user : this->users)
 	{
 		if (user)
@@ -165,36 +159,41 @@ void Server::writeMessage(const std::string& message)
 
 void Server::processUsers()
 {
-	for (std::size_t i = this->users.size() - 1; i >= 0 && i != static_cast<std::size_t>(-1); i--)
-	{
-		if (this->users[i])
-		{
-			this->users[i]->process();
+	std::lock_guard<std::recursive_mutex> lockGuard(this->mutex);
 
-			while (this->users[i]->hasMessage())
+	std::vector<std::shared_ptr<User>>::iterator iter;
+
+	for (iter = this->users.begin(); iter != this->users.end(); )
+	{
+		std::shared_ptr<User>& user = *iter;
+
+		if (user)
+		{
+			user->process();
+
+			while (user->hasMessage())
 			{
-				this->writeMessage(this->users[i]->getMessage());
+				this->writeMessage(user->getMessage());
 			}
 
-			if (!this->users[i]->isConnected())
+			if (!user->isConnected())
 			{
-				this->users.erase(this->users.begin() + i);
+				iter = this->users.erase(iter);
+
+				continue;
 			}
 		}
+
+		iter++;
 	}
 }
 
 void Server::processNetwork()
 {
-	while (true)
+	while (this->run)
 	{
 		{
-			std::lock_guard<std::mutex> lockGuard(this->mutex);
-
-			if (!this->run)
-			{
-				break;
-			}
+			std::lock_guard<std::recursive_mutex> lockGuard(this->mutex);
 
 			this->acceptUser();
 

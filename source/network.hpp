@@ -21,6 +21,11 @@
 
 #include <stdexcept>
 #include <string>
+#include <mutex>
+#include <array>
+#include <vector>
+#include <cstring>
+#include <sstream>
 
 #if defined(WINDOWS)
 
@@ -56,6 +61,24 @@ typedef int Socket;
 class Network
 {
 public:
+	static std::vector<std::string> resolveHostAddressesIPv4(const std::string& host);
+
+	static std::vector<std::string> resolveHostAddressesIPv6(const std::string& host);
+
+	static std::vector<std::string> resolveHostAddresses(const std::string& host);
+
+	static std::string resolveHostIPv4(const std::string& host);
+
+	static std::string resolveHostIPv6(const std::string& host);
+
+	static std::string resolveHost(const std::string& host);
+
+	static std::pair<std::string, unsigned short> splitAddress(const std::string& address);
+
+	static std::string mapIPv4(const std::string& address);
+
+	static std::string unmapIPv4(const std::string& address);
+
 	static void startup();
 
 	static void cleanup();
@@ -66,4 +89,6 @@ public:
 
 private:
 	static int counter;
+
+	static std::mutex mutex;
 };

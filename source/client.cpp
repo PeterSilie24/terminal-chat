@@ -17,27 +17,20 @@
 
 #include "client.hpp"
 
-Client::Client(const std::string& name, const std::string& address) : run(true)
+Client::Client(const std::string& name, const std::string& address)
 {
-	this->tcpSocket = std::shared_ptr<TcpSocket>(new TcpSocket());
-
-	if (this->tcpSocket)
-	{
-		this->tcpSocket->connect(address);
-	}
+	this->tcpSocket.connect(address);
 
 	this->sendMessage(name);
+
+	this->run = true;
 
 	this->thread = std::thread([this]() { this->processNetwork(); });
 }
 
 Client::~Client()
 {
-	{
-		std::lock_guard<std::mutex> lockGuard(this->mutex);
-
-		this->run = false;
-	}
+	this->run = false;
 
 	if (this->thread.joinable())
 	{
@@ -47,21 +40,19 @@ Client::~Client()
 
 bool Client::isClosed() const
 {
-	std::lock_guard<std::mutex> lockGuard(this->mutex);
-
 	return !this->run;
 }
 
 bool Client::hasMessage() const
 {
-	std::lock_guard<std::mutex> lockGuard(this->mutex);
+	std::lock_guard<std::recursive_mutex> lockGuard(this->mutex);
 
 	return this->messages.size() > 0;
 }
 
 std::string Client::getMessage()
 {
-	std::lock_guard<std::mutex> lockGuard(this->mutex);
+	std::lock_guard<std::recursive_mutex> lockGuard(this->mutex);
 
 	std::string str;
 
@@ -77,16 +68,15 @@ std::string Client::getMessage()
 
 void Client::sendMessage(const std::string& message)
 {
-	std::lock_guard<std::mutex> lockGuard(this->mutex);
+	std::lock_guard<std::recursive_mutex> lockGuard(this->mutex);
 
-	if (this->tcpSocket)
-	{
-		this->tcpSocket->writeLine(message);
-	}
+	this->tcpSocket.writeLine(message);
 }
 
 void Client::processMessage(const std::string& line)
 {
+	std::lock_guard<std::recursive_mutex> lockGuard(this->mutex);
+
 	if (line.length() > 0)
 	{
 		this->messages.push(line);
@@ -95,39 +85,31 @@ void Client::processMessage(const std::string& line)
 
 void Client::processNetwork()
 {
-	while (true)
+	while (this->run)
 	{
 		{
-			std::lock_guard<std::mutex> lockGuard(this->mutex);
+			std::lock_guard<std::recursive_mutex> lockGuard(this->mutex);
 
-			if (!this->run)
+			this->tcpSocket.process();
+
+			while (this->tcpSocket.hasLine())
 			{
-				break;
+				this->processMessage(this->tcpSocket.readLine());
 			}
 
-			if (this->tcpSocket)
+			if (this->tcpSocket.hasTimedOut())
 			{
-				this->tcpSocket->process();
+				this->messages.push("Connection has been lost");
 
-				while (this->tcpSocket->hasLine())
-				{
-					this->processMessage(this->tcpSocket->readLine());
-				}
+				this->tcpSocket.close();
 
-				if (this->tcpSocket->hasTimedOut())
-				{
-					this->messages.push("Connection has been lost");
+				this->run = false;
+			}
+			else if (!this->tcpSocket.isConnected())
+			{
+				this->messages.push("The server has been closed");
 
-					this->tcpSocket->close();
-
-					this->run = false;
-				}
-				else if (!this->tcpSocket->isConnected())
-				{
-					this->messages.push("The server has been closed");
-
-					this->run = false;
-				}
+				this->run = false;
 			}
 		}
 

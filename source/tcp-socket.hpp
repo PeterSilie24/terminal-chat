@@ -21,6 +21,8 @@
 #include <memory>
 #include <array>
 #include <chrono>
+#include <algorithm>
+#include <cstring>
 
 #include "network.hpp"
 
@@ -43,7 +45,7 @@ public:
 
 	void listen(int maxConnections = Network::MaxConnections);
 
-	void connect(const std::string& ipAddress, unsigned short port);
+	void connect(const std::string& address, unsigned short port);
 
 	void connect(const std::string& address);
 
@@ -61,18 +63,18 @@ public:
 
 	void writeLine(const std::string& line);
 
-	void close(bool force = false);
+	void close();
 
 	void process();
 
 private:
+	void setup(int family);
+
 	void writeCmd(char cmd);
 
 	bool processCmd(const std::string& line);
 
 	void processLine(const std::string& line);
-
-	void cleanup();
 
 	Socket socket;
 

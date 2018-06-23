@@ -19,19 +19,39 @@
 
 void Arguments::setArgs(int argc, char* argv[])
 {
-	args.clear();
+	std::vector<std::string> args;
 
 	for (int i = 0; i < argc; i++)
 	{
 		args.push_back(argv[i]);
 	}
+
+	int max = argc - 1;
+
+	for (int i = max; i >= 0; i--)
+	{
+		if (args[i].length())
+		{
+			if (args[i][0] == '-' || args[i][0] == '/')
+			{
+				flags.push_back(args[i].data() + 1);
+
+				if (i < max)
+				{
+					arguments.push_back(std::pair<std::string, std::string>(args[i].data() + 1, args[i + 1]));
+				}
+
+				max = i - 1;
+			}
+		}
+	}
 }
 
-bool Arguments::hasArg(const std::string& arg)
+bool Arguments::hasFlag(const std::string& flag)
 {
-	for (auto& argument : args)
+	for (auto& tempFlag : flags)
 	{
-		if (argument == ("/" + arg) || argument == ("-" + arg))
+		if (tempFlag == flag)
 		{
 			return true;
 		}
@@ -40,20 +60,32 @@ bool Arguments::hasArg(const std::string& arg)
 	return false;
 }
 
-std::string Arguments::getArg(const std::string& arg)
+bool Arguments::hasArgument(const std::string& argument)
 {
-	if (args.size() > 1)
+	for (auto& tempArgument : arguments)
 	{
-		for (std::size_t i = 0; i < args.size() - 1; i++)
+		if (tempArgument.first == argument)
 		{
-			if (args[i] == ("/" + arg) || args[i] == ("-" + arg))
-			{
-				return args[i + 1];
-			}
+			return true;
+		}
+	}
+
+	return false;
+}
+
+std::string Arguments::getArgument(const std::string& argument)
+{
+	for (auto& tempArgument : arguments)
+	{
+		if (tempArgument.first == argument)
+		{
+			return tempArgument.second;
 		}
 	}
 
 	return "";
 }
 
-std::vector<std::string> Arguments::args;
+std::vector<std::pair<std::string, std::string>> Arguments::arguments;
+
+std::vector<std::string> Arguments::flags;

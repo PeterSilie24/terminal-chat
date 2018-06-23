@@ -29,8 +29,8 @@ std::string msgDefault =
 std::string msgHelp =
 "terminal-chat:\n"
 "Help: -? or -help\n"
-"Host: -h -n [name]\n"
-"Join: -j [ip[:port]] -n [name]";
+"Host: -h [port=1024] -n [name]\n"
+"Join: -j [ip[:port=1024]] -n [name]";
 
 int main(int argc, char* argv[])
 {
@@ -38,41 +38,54 @@ int main(int argc, char* argv[])
 	
 	Terminal terminal;
 
-	if (Arguments::hasArg("help") || Arguments::hasArg("?"))
+	if (Arguments::hasFlag("help") || Arguments::hasFlag("?"))
 	{
 		terminal.printLine(msgHelp);
 	}
-	else if (!Arguments::hasArg("help") && !Arguments::hasArg("?") && !Arguments::hasArg("n") && (!Arguments::hasArg("h") || !Arguments::hasArg("j")))
+	else if (!Arguments::hasArgument("n") || (!Arguments::hasFlag("h") && !Arguments::hasFlag("j")))
 	{
 		terminal.printLine(msgDefault);
 	}
 	else
 	{
-		std::string name = Arguments::getArg("n");
+		std::string name = Arguments::getArgument("n");
 
-		std::string address = "127.0.0.1";
+		std::string address = "localhost";
 
-		if (Arguments::hasArg("j"))
+		if (Arguments::hasArgument("j"))
 		{
-			address = Arguments::getArg("j");
+			address = Arguments::getArgument("j");
 		}
 
 		try
 		{
 			std::shared_ptr<Server> server;
 
-			if (Arguments::hasArg("h"))
-			{
-				terminal.printLine("Hosting a chat room ...");
+			std::shared_ptr<Client> client;
 
-				server = std::shared_ptr<Server>(new Server());
+			if (Arguments::hasFlag("h"))
+			{
+				unsigned short port = Network::DefaultPort;
+
+				if (Arguments::hasArgument("h"))
+				{
+					std::stringstream stream(Arguments::getArgument("h"));
+
+					stream >> port;
+				}
+
+				terminal.printLine("Hosting a chat room on port " + std::to_string(port) + " ...");
+
+				server = std::shared_ptr<Server>(new Server(port));
+
+				client = std::shared_ptr<Client>(new Client(name, "localhost:" + std::to_string(port)));
 			}
 			else
 			{
 				terminal.printLine("Connecting to " + address +  " ...");
-			}
 
-			std::shared_ptr<Client> client(new Client(name, address));
+				client = std::shared_ptr<Client>(new Client(name, address));
+			}
 
 			terminal.enableInput();
 
